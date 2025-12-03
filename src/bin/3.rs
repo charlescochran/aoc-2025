@@ -1,18 +1,6 @@
 use std::env;
 use std::fs;
 
-fn find_highest(line: &str, start: Option<usize>, end: Option<usize>) -> Option<(u8, usize)> {
-    let s = start.unwrap_or(0);
-    let e = end.unwrap_or(line.len());
-    for i in (1..10).rev() {
-        let Some(idx) = line[s..e].find(&i.to_string()) else {
-            continue;
-        };
-        return Some((i, s + idx));
-    }
-    return None;
-}
-
 fn solve(input: &str, k: usize) -> u64 {
     let mut ans: u64 = 0;
 
@@ -21,9 +9,14 @@ fn solve(input: &str, k: usize) -> u64 {
         let mut total = 0u64;
         for d in 0..k {
             let end = line.len() - k + d + 1;
-            let (digit, idx) = find_highest(line, Some(start), Some(end)).unwrap();
-            total = total * 10 + digit as u64;
-            start = idx + 1;
+            let (idx, c) = line[start..end]
+                .bytes()  // bytes() instead of chars() for reversability
+                .enumerate()
+                .rev()
+                .max_by_key(|&(_, c)| c)  // Find the max digit
+                .unwrap();
+            total = total * 10 + (c - b'0') as u64;
+            start += idx + 1;
         }
         ans += total as u64;
     }
