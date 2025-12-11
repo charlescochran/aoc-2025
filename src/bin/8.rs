@@ -1,3 +1,4 @@
+use disjoint::DisjointSet;
 use itertools::Itertools;
 use kiddo::{KdTree, SquaredEuclidean};
 use std::collections::BTreeSet;
@@ -18,58 +19,57 @@ fn parse(input: &str) -> Vec<[f64; 3]> {
         .collect()
 }
 
-fn find_min_pairs(positions: &Vec<[f64; 3]>) -> Vec<(u64, u64, u64)> {
-    let mut tree: KdTree<_, 3> = positions.into();
-    let mut pairs = BTreeSet::new();
-    let mut min_pairs = Vec::new();
-    let mut prev_min_pairs = Vec::new();
+fn solve(positions: Vec<[f64; 3]>) -> (u64, u64) {
+    // Used to quickly perform nearest neighbor searches
+    let tree: KdTree<_, 3> = (&positions).into();
+    // Pairs, sorted by distance
+    let mut distances = BTreeSet::new();
+    // Unique pairs (needed for part 1)
+    let mut pairs = HashSet::new();
+    // Pairs fround previously
+    let mut prev = Vec::new();
 
+    let mut ans1 = 0;
+    let mut prev_diff_idx = 0;
+
+    let mut circuits = DisjointSet::with_len(positions.len());
+    // Find the nth nearest neighbor from each point
     for n in 1..positions.len() {
         for (i, pos) in positions.iter().enumerate() {
             let neighbor = tree.nearest_n::<SquaredEuclidean>(pos, n + 1)[n];
-            let idx1 = std::cmp::min(i as u64, neighbor.item);
-            let idx2 = std::cmp::max(i as u64, neighbor.item);
-            pairs.insert((neighbor.distance as u64, idx1, idx2));
+            distances.insert((neighbor.distance as u64, [i, neighbor.item as usize]));
         }
-        min_pairs = pairs.iter().take(1000).cloned().collect();
-        if !prev_min_pairs.is_empty() && min_pairs == prev_min_pairs {
-            break;
-        }
-        std::mem::swap(&mut prev_min_pairs, &mut min_pairs);
-    }
-    min_pairs
-}
+        // diff_idx is the index of the first pair that differs since last round (when n was one
+        // smaller). The slice from prev_diff_idx to diff_idx have now been confirmed as minimum
+        // distance pairs, so we can add them our circuit.
+        let new: Vec<(u64, [usize; 2])> = distances.iter().cloned().collect();
+        if let Some(diff_idx) = new.iter().zip(&prev).position(|(a, b)| a != b) {
+            for (_distance, [idx1, idx2]) in &new[prev_diff_idx..diff_idx] {
+                // Part 1: calculate answer after first 1000 pairs (not counting duplicates)
+                pairs.insert([std::cmp::min(*idx1, *idx2), std::cmp::max(*idx1, *idx2)]);
+                if pairs.len() == 1000 {
+                    ans1 = circuits
+                        .sets()
+                        .iter()
+                        .map(|c| c.len() as u64)
+                        .sorted()
+                        .rev()
+                        .take(3)
+                        .product();
+                }
 
-fn create_circuits(min_pairs: Vec<(u64, u64, u64)>) -> Vec<HashSet<u64>> {
-    let mut circuits: Vec<HashSet<u64>> = Vec::new();
-    for (_distance, idx1, idx2) in min_pairs {
-        let mut pair: HashSet<_> = [idx1, idx2].into();
-        let mut i = 0;
-        while i < circuits.len() {
-            if circuits[i].is_disjoint(&pair) {
-                i += 1;
-                continue;
+                // Part 2: stop once all boxes have been joined
+                circuits.join(*idx1, *idx2);
+                if (1..positions.len()).all(|i| circuits.is_joined(0, i)) {
+                    let ans2 = (positions[*idx1][0] * positions[*idx2][0]) as u64;
+                    return (ans1, ans2);
+                }
             }
-            pair.extend(circuits.remove(i));
+            prev_diff_idx = diff_idx;
         }
-        circuits.push(pair);
+        prev = new;
     }
-    circuits
-}
-
-fn solve(positions: Vec<[f64; 3]>) -> (u64, u64) {
-    let mut ans1: u64 = 0;
-    let circuits = create_circuits(find_min_pairs(&positions));
-    let mut ans1 = circuits
-        .iter()
-        .map(|c| c.len() as u64)
-        .sorted()
-        .rev()
-        .take(3)
-        .product();
-    let mut ans2: u64 = 0;
-
-    (ans1, ans2)
+    unreachable!();
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
